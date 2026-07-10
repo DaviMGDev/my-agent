@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -12,7 +13,21 @@ import (
 	"my-agent/internal/providers/ollama"
 )
 
+// Version is set at build time via -ldflags.
+// Defaults to "dev" when built without ldflags.
+var Version = "dev"
+
 func main() {
+	// Support both -version and --version (Go's flag package handles -- as
+	// end-of-flags, so we check os.Args directly for the double-dash form).
+	for _, arg := range os.Args[1:] {
+		if arg == "-version" || arg == "--version" {
+			fmt.Println("my-agent version", Version)
+			os.Exit(0)
+		}
+	}
+	flag.Parse()
+
 	llmProvider := &ollama.OllamaLLM{}
 	ag := &agent.FunctionCallingAgent{LLM: llmProvider}
 	model := "ministral-3:3b-cloud"
