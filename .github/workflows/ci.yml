@@ -30,5 +30,8 @@ jobs:
       - name: Test
         run: go test -v -coverprofile=coverage.out ./internal/... ./cmd/...
 
+      - name: Fetch tags
+        run: git fetch --tags --force
+
       - name: Build
-        run: go build -o my-agent ./cmd/my-agent/
+        run: go build -ldflags="-X main.Version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)" -o my-agent ./cmd/my-agent/
