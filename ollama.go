@@ -33,6 +33,7 @@ type ollamaChatRequest struct {
 	Messages []ollamaMessage  `json:"messages"`
 	Stream   bool             `json:"stream"`
 	Options  *ollamaOptions   `json:"options,omitempty"`
+	Tools    []ollamaToolDef  `json:"tools,omitempty"`
 }
 
 type ollamaMessage struct {
@@ -48,6 +49,17 @@ type ollamaToolCall struct {
 type ollamaToolCallFunction struct {
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"` // JSON object serialized as raw string
+}
+
+type ollamaToolDef struct {
+	Type     string                `json:"type"`
+	Function ollamaToolDefFunction `json:"function"`
+}
+
+type ollamaToolDefFunction struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Parameters  json.RawMessage `json:"parameters"`
 }
 
 type ollamaOptions struct {
@@ -88,7 +100,27 @@ func toOllamaRole(r MessageRole) string {
 func toMessages(msgs []Message) []ollamaMessage {
 	out := make([]ollamaMessage, len(msgs))
 	for i, m := range msgs {
-		out[i] = ollamaMessage{Role: toOllamaRole(m.Role), Content: m.Content}
+		om := ollamaMessage{Role: toOllamaRole(m.Role), Content: m.Content}
+		if len(m.ToolCalls) > 0 {
+			om.ToolCalls = toOllamaToolCalls(m.ToolCalls)
+		}
+		out[i] = om
+	}
+	return out
+}
+
+func toOllamaToolCalls(tcs []ToolCall) []ollamaToolCall {
+	if len(tcs) == 0 {
+		return nil
+	}
+	out := make([]ollamaToolCall, len(tcs))
+	for i, tc := range tcs {
+		out[i] = ollamaToolCall{
+			Function: ollamaToolCallFunction{
+				Name:      tc.Function.Name,
+				Arguments: tc.Function.Arguments,
+			},
+		}
 	}
 	return out
 }
@@ -144,6 +176,45 @@ func toToolCallDeltas(ollamaCalls []ollamaToolCall) []ToolCallDelta {
 	return deltas
 }
 
+func toToolCalls(ollamaCalls []ollamaToolCall) []ToolCall {
+	if len(ollamaCalls) == 0 {
+		return nil
+	}
+	out := make([]ToolCall, len(ollamaCalls))
+	for i, tc := range ollamaCalls {
+		out[i] = ToolCall{
+			ID: fmt.Sprintf("call_%d", i),
+			Function: struct {
+				Name      string `json:"name,omitempty"`
+				Arguments string `json:"arguments,omitempty"`
+			}{
+				Name:      tc.Function.Name,
+				Arguments: tc.Function.Arguments,
+			},
+		}
+	}
+	return out
+}
+
+func toOllamaTools(tools []Tool) []ollamaToolDef {
+	if len(tools) == 0 {
+		return nil
+	}
+	defs := make([]ollamaToolDef, len(tools))
+	for i, tool := range tools {
+		params, _ := json.Marshal(tool.Schema())
+		defs[i] = ollamaToolDef{
+			Type: "function",
+			Function: ollamaToolDefFunction{
+				Name:        tool.Name(),
+				Description: tool.Description(),
+				Parameters:  params,
+			},
+		}
+	}
+	return defs
+}
+
 // --- HTTP helpers ---------------------------------------------------------
 
 func (o *OllamaLLM) doRequest(ctx context.Context, body any) (*http.Response, error) {
@@ -180,6 +251,7 @@ func (o *OllamaLLM) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, 
 		Messages: toMessages(req.Messages),
 		Stream:   false,
 		Options:  toOptions(req),
+		Tools:    toOllamaTools(req.Tools),
 	}
 
 	resp, err := o.doRequest(ctx, body)
@@ -203,8 +275,9 @@ func (o *OllamaLLM) toChatResponse(ollamaResp *ollamaChatResponse, model string)
 	}
 	if ollamaResp.Message != nil {
 		cr.Message = Message{
-			Role:    MessageRole(ollamaResp.Message.Role),
-			Content: ollamaResp.Message.Content,
+			Role:      MessageRole(ollamaResp.Message.Role),
+			Content:   ollamaResp.Message.Content,
+			ToolCalls: toToolCalls(ollamaResp.Message.ToolCalls),
 		}
 	}
 	if ollamaResp.DoneReason != "" {
@@ -244,6 +317,7 @@ func (o *OllamaLLM) StreamChat(ctx context.Context, req *ChatRequest) (ChatStrea
 		Messages: toMessages(req.Messages),
 		Stream:   true,
 		Options:  toOptions(req),
+		Tools:    toOllamaTools(req.Tools),
 	}
 
 	resp, err := o.doRequest(ctx, body)
