@@ -31,17 +31,17 @@ var _ llm.LLM = (*OllamaLLM)(nil)
 // --- Ollama API wire types ------------------------------------------------
 
 type ollamaChatRequest struct {
-	Model    string           `json:"model"`
-	Messages []ollamaMessage  `json:"messages"`
-	Stream   bool             `json:"stream"`
-	Options  *ollamaOptions   `json:"options,omitempty"`
-	Tools    []ollamaToolDef  `json:"tools,omitempty"`
+	Model    string          `json:"model"`
+	Messages []ollamaMessage `json:"messages"`
+	Stream   bool            `json:"stream"`
+	Options  *ollamaOptions  `json:"options,omitempty"`
+	Tools    []ollamaToolDef `json:"tools,omitempty"`
 }
 
 type ollamaMessage struct {
-	Role      string            `json:"role"`
-	Content   string            `json:"content"`
-	ToolCalls []ollamaToolCall  `json:"tool_calls,omitempty"`
+	Role      string           `json:"role"`
+	Content   string           `json:"content"`
+	ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
 }
 
 type ollamaToolCall struct {
@@ -71,12 +71,12 @@ type ollamaOptions struct {
 }
 
 type ollamaChatResponse struct {
-	Model      string         `json:"model"`
-	Message    *ollamaMessage `json:"message"`
-	DoneReason string         `json:"done_reason,omitempty"`
-	Done       bool           `json:"done"`
-	PromptEvalCount int      `json:"prompt_eval_count,omitempty"`
-	EvalCount      int      `json:"eval_count,omitempty"`
+	Model           string         `json:"model"`
+	Message         *ollamaMessage `json:"message"`
+	DoneReason      string         `json:"done_reason,omitempty"`
+	Done            bool           `json:"done"`
+	PromptEvalCount int            `json:"prompt_eval_count,omitempty"`
+	EvalCount       int            `json:"eval_count,omitempty"`
 }
 
 // --- helpers --------------------------------------------------------------
@@ -272,7 +272,7 @@ func (o *OllamaLLM) Chat(ctx context.Context, req *llm.ChatRequest) (*llm.ChatRe
 
 func (o *OllamaLLM) toChatResponse(ollamaResp *ollamaChatResponse, model string) *llm.ChatResponse {
 	cr := &llm.ChatResponse{
-		Model: model,
+		Model:        model,
 		FinishReason: llm.FinishReasonStop,
 	}
 	if ollamaResp.Message != nil {

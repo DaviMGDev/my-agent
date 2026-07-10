@@ -18,10 +18,10 @@ func TestOllamaLLM_Chat(t *testing.T) {
 	t.Parallel()
 
 	var (
-		mu           sync.Mutex
-		gotModel     string
-		gotStream    bool
-		gotMessages  []ollamaMessage
+		mu          sync.Mutex
+		gotModel    string
+		gotStream   bool
+		gotMessages []ollamaMessage
 	)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

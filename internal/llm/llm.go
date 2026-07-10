@@ -22,13 +22,13 @@ type MessageRole string
 
 const (
 	// RoleSystem indicates a system-level instruction message.
-	RoleSystem    MessageRole = "system"
+	RoleSystem MessageRole = "system"
 	// RoleUser indicates a message from the end user.
-	RoleUser      MessageRole = "user"
+	RoleUser MessageRole = "user"
 	// RoleAssistant indicates a message from the AI assistant.
 	RoleAssistant MessageRole = "assistant"
 	// RoleTool indicates a message containing a tool call result.
-	RoleTool       MessageRole = "tool"
+	RoleTool MessageRole = "tool"
 )
 
 // Message represents a single message in a chat conversation.
@@ -87,11 +87,11 @@ type FinishReason string
 
 const (
 	// FinishReasonStop indicates the model finished naturally.
-	FinishReasonStop          FinishReason = "stop"
+	FinishReasonStop FinishReason = "stop"
 	// FinishReasonLength indicates the response was cut off by max_tokens.
-	FinishReasonLength        FinishReason = "length"
+	FinishReasonLength FinishReason = "length"
 	// FinishReasonError indicates an error occurred during generation.
-	FinishReasonError         FinishReason = "error"
+	FinishReasonError FinishReason = "error"
 	// FinishReasonContentFilter indicates the response was flagged by a content filter.
 	FinishReasonContentFilter FinishReason = "content_filter"
 )
@@ -115,11 +115,11 @@ type ChatStream interface {
 
 // ChatChunk is one incremental delta from a streaming chat response.
 type ChatChunk struct {
-	Content     string          `json:"content"`
-	Role        MessageRole     `json:"role"`
-	ToolCalls   []ToolCallDelta `json:"tool_calls,omitempty"`
-	FinishReason FinishReason   `json:"finish_reason,omitempty"`
-	Usage       *UsageStats     `json:"usage,omitempty"`
+	Content      string          `json:"content"`
+	Role         MessageRole     `json:"role"`
+	ToolCalls    []ToolCallDelta `json:"tool_calls,omitempty"`
+	FinishReason FinishReason    `json:"finish_reason,omitempty"`
+	Usage        *UsageStats     `json:"usage,omitempty"`
 }
 
 // ToolCallDelta carries incremental tool call data for streaming responses.
@@ -143,8 +143,8 @@ type ToolCall struct {
 
 // ToolDef is the serializable definition of a tool, used in API requests.
 type ToolDef struct {
-	Type     string        `json:"type"`
-	Function ToolFunction  `json:"function"`
+	Type     string       `json:"type"`
+	Function ToolFunction `json:"function"`
 }
 
 // ToolFunction describes a callable function for tool calling.

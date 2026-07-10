@@ -33,9 +33,9 @@ type AgentRequest struct {
 
 // AgentResponse contains the result of an agent execution.
 type AgentResponse struct {
-	Messages []llm.Message  `json:"messages"`  // full conversation history
-	Final    llm.Message    `json:"final"`      // the last assistant message
-	Usage    llm.UsageStats `json:"usage"`      // cumulative token usage
+	Messages []llm.Message  `json:"messages"` // full conversation history
+	Final    llm.Message    `json:"final"`    // the last assistant message
+	Usage    llm.UsageStats `json:"usage"`    // cumulative token usage
 }
 
 // AgentEventType categorises an agent stream event.
@@ -58,13 +58,13 @@ type ToolResultEvent struct {
 
 // AgentChunk is one event from a streaming agent execution.
 type AgentChunk struct {
-	Type       AgentEventType   `json:"type"`
-	Content    string           `json:"content,omitempty"`
-	Role       llm.MessageRole  `json:"role,omitempty"`
-	ToolCall   *llm.ToolCallDelta   `json:"tool_call,omitempty"`
-	ToolResult *ToolResultEvent `json:"tool_result,omitempty"`
-	Usage      *llm.UsageStats  `json:"usage,omitempty"`
-	Done       bool             `json:"done,omitempty"`
+	Type       AgentEventType     `json:"type"`
+	Content    string             `json:"content,omitempty"`
+	Role       llm.MessageRole    `json:"role,omitempty"`
+	ToolCall   *llm.ToolCallDelta `json:"tool_call,omitempty"`
+	ToolResult *ToolResultEvent   `json:"tool_result,omitempty"`
+	Usage      *llm.UsageStats    `json:"usage,omitempty"`
+	Done       bool               `json:"done,omitempty"`
 }
 
 // AgentStream is a streaming iterator over agent execution events.
@@ -514,9 +514,9 @@ type MockTool struct {
 
 var _ llm.Tool = (*MockTool)(nil)
 
-func (m *MockTool) Name() string                     { return m.NameValue }
-func (m *MockTool) Description() string               { return m.DescriptionValue }
-func (m *MockTool) Schema() map[string]any            { return m.SchemaValue }
+func (m *MockTool) Name() string           { return m.NameValue }
+func (m *MockTool) Description() string    { return m.DescriptionValue }
+func (m *MockTool) Schema() map[string]any { return m.SchemaValue }
 func (m *MockTool) Execute(ctx context.Context, args map[string]any) (string, error) {
 	if m.ExecuteFn == nil {
 		return "mock result", nil
