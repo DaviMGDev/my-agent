@@ -1,6 +1,8 @@
 # my-agent
 
-A Go-based LLM agent framework with a generic chat completion interface and built-in mock implementation.
+[![CI](https://github.com/DaviMGDev/my-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/DaviMGDev/my-agent/actions/workflows/ci.yml)
+
+A Go-based LLM agent framework with a generic chat completion interface, tool-calling agent loop, and built-in mock implementation.
 
 ## Overview
 
@@ -35,13 +37,15 @@ package main
 import (
 	"context"
 	"fmt"
+
+	"my-agent/internal/llm"
 )
 
 func main() {
-	mock := &MockLLM{}
-	req := &ChatRequest{
-		Messages: []Message{
-			{Role: RoleUser, Content: "Hello, how are you?"},
+	mock := &llm.MockLLM{}
+	req := &llm.ChatRequest{
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "Hello, how are you?"},
 		},
 		Model:       "mock-model",
 		Temperature: 0.7,
@@ -59,7 +63,7 @@ func main() {
 ```
 
 ```bash
-go run .
+go run ./cmd/my-agent/
 # Output: Chat Response: Hello, how are you?
 #         Hello from streaming!
 #         [stop] tokens: 42
@@ -75,13 +79,15 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"my-agent/internal/llm"
 )
 
 func main() {
-	mock := &MockLLM{}
-	req := &ChatRequest{
-		Messages: []Message{
-			{Role: RoleUser, Content: "Hello from streaming!"},
+	mock := &llm.MockLLM{}
+	req := &llm.ChatRequest{
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "Hello from streaming!"},
 		},
 		Model: "mock-model",
 	}
@@ -111,14 +117,22 @@ func main() {
 
 ## Extending
 
-Add a new provider by creating a file (e.g., `openai.go`) with a struct that implements the `LLM` interface:
+Add a new provider by creating a file under `internal/providers/` (e.g., `internal/providers/openai/openai.go`) with a struct that implements the `LLM` interface:
 
 ```go
+package openai
+
+import (
+	"context"
+
+	"my-agent/internal/llm"
+)
+
 type OpenAILLM struct {
 	apiKey string
 }
 
-func (o *OpenAILLM) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
+func (o *OpenAILLM) Chat(ctx context.Context, req *llm.ChatRequest) (*llm.ChatResponse, error) {
 	// Real API call
 }
 
@@ -126,7 +140,7 @@ func (o *OpenAILLM) Complete(ctx context.Context, prompt string) (string, error)
 	// Real completion call
 }
 
-func (o *OpenAILLM) StreamChat(ctx context.Context, req *ChatRequest) (ChatStream, error) {
+func (o *OpenAILLM) StreamChat(ctx context.Context, req *llm.ChatRequest) (llm.ChatStream, error) {
 	// Real streaming call
 }
 ```
@@ -143,16 +157,19 @@ package main
 import (
 	"context"
 	"fmt"
+
+	"my-agent/internal/llm"
+	"my-agent/internal/providers/ollama"
 )
 
 func main() {
-	ollama := &OllamaLLM{
+	o := &ollama.OllamaLLM{
 		BaseURL: "http://localhost:11434", // default
 	}
 
-	resp, err := ollama.Chat(context.Background(), &ChatRequest{
-		Messages: []Message{
-			{Role: RoleUser, Content: "Why is the sky blue?"},
+	resp, err := o.Chat(context.Background(), &llm.ChatRequest{
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: "Why is the sky blue?"},
 		},
 		Model: "llama3.2",
 	})

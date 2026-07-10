@@ -1,10 +1,14 @@
 # Binary
-my-agent
-my-agent.exe
+/my-agent
+/my-agent.exe
 
 # Test binaries
 *.test
 *.test.exe
+
+# Coverage output
+coverage.out
+coverage.html
 
 # OS files
 .DS_Store

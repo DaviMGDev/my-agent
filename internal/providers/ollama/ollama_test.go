@@ -1,4 +1,4 @@
-package main
+package ollama
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"my-agent/internal/llm"
 )
 
 func TestOllamaLLM_Chat(t *testing.T) {
@@ -55,21 +57,21 @@ func TestOllamaLLM_Chat(t *testing.T) {
 	}))
 	defer server.Close()
 
-	llm := &OllamaLLM{
+	ollamaLLM := &OllamaLLM{
 		BaseURL: server.URL,
 	}
 
-	req := &ChatRequest{
-		Messages: []Message{
-			{Role: RoleSystem, Content: "You are helpful."},
-			{Role: RoleUser, Content: "Hi there"},
+	req := &llm.ChatRequest{
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: "You are helpful."},
+			{Role: llm.RoleUser, Content: "Hi there"},
 		},
 		Model:       "ministral-3b:cloud",
 		Temperature: 0.7,
 		MaxTokens:   100,
 	}
 
-	resp, err := llm.Chat(context.Background(), req)
+	resp, err := ollamaLLM.Chat(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -94,8 +96,8 @@ func TestOllamaLLM_Chat(t *testing.T) {
 	mu.Unlock()
 
 	// Verify response
-	if resp.Message.Role != RoleAssistant {
-		t.Errorf("expected role %q, got %q", RoleAssistant, resp.Message.Role)
+	if resp.Message.Role != llm.RoleAssistant {
+		t.Errorf("expected role %q, got %q", llm.RoleAssistant, resp.Message.Role)
 	}
 	if resp.Message.Content != "Hello from Ollama!" {
 		t.Errorf("expected content %q, got %q", "Hello from Ollama!", resp.Message.Content)
@@ -103,8 +105,8 @@ func TestOllamaLLM_Chat(t *testing.T) {
 	if resp.Model != "ministral-3b:cloud" {
 		t.Errorf("expected model %q, got %q", "ministral-3b:cloud", resp.Model)
 	}
-	if resp.FinishReason != FinishReasonStop {
-		t.Errorf("expected finish reason %q, got %q", FinishReasonStop, resp.FinishReason)
+	if resp.FinishReason != llm.FinishReasonStop {
+		t.Errorf("expected finish reason %q, got %q", llm.FinishReasonStop, resp.FinishReason)
 	}
 	if resp.Usage.PromptTokens != 10 {
 		t.Errorf("expected PromptTokens 10, got %d", resp.Usage.PromptTokens)
@@ -119,8 +121,8 @@ func TestOllamaLLM_Chat(t *testing.T) {
 
 func TestOllamaLLM_Chat_NilRequest(t *testing.T) {
 	t.Parallel()
-	llm := &OllamaLLM{}
-	_, err := llm.Chat(context.Background(), nil)
+	ollamaLLM := &OllamaLLM{}
+	_, err := ollamaLLM.Chat(context.Background(), nil)
 	if err == nil {
 		t.Fatal("expected error for nil request")
 	}
@@ -128,9 +130,9 @@ func TestOllamaLLM_Chat_NilRequest(t *testing.T) {
 
 func TestOllamaLLM_Chat_EmptyModel(t *testing.T) {
 	t.Parallel()
-	llm := &OllamaLLM{}
-	_, err := llm.Chat(context.Background(), &ChatRequest{
-		Messages: []Message{{Role: RoleUser, Content: "hi"}},
+	ollamaLLM := &OllamaLLM{}
+	_, err := ollamaLLM.Chat(context.Background(), &llm.ChatRequest{
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "hi"}},
 	})
 	if err == nil {
 		t.Fatal("expected error for empty model")
@@ -145,9 +147,9 @@ func TestOllamaLLM_Chat_Non200(t *testing.T) {
 	}))
 	defer server.Close()
 
-	llm := &OllamaLLM{BaseURL: server.URL}
-	_, err := llm.Chat(context.Background(), &ChatRequest{
-		Messages: []Message{{Role: RoleUser, Content: "hi"}},
+	ollamaLLM := &OllamaLLM{BaseURL: server.URL}
+	_, err := ollamaLLM.Chat(context.Background(), &llm.ChatRequest{
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "hi"}},
 		Model:    "bad-model",
 	})
 	if err == nil {
@@ -174,8 +176,8 @@ func TestOllamaLLM_Complete(t *testing.T) {
 	}))
 	defer server.Close()
 
-	llm := &OllamaLLM{BaseURL: server.URL}
-	resp, err := llm.Complete(context.Background(), "Hi")
+	ollamaLLM := &OllamaLLM{BaseURL: server.URL}
+	resp, err := ollamaLLM.Complete(context.Background(), "Hi")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -207,13 +209,13 @@ func TestOllamaLLM_StreamChat(t *testing.T) {
 	}))
 	defer server.Close()
 
-	llm := &OllamaLLM{BaseURL: server.URL}
-	req := &ChatRequest{
-		Messages: []Message{{Role: RoleUser, Content: "Hi"}},
+	ollamaLLM := &OllamaLLM{BaseURL: server.URL}
+	req := &llm.ChatRequest{
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "Hi"}},
 		Model:    "ministral-3b:cloud",
 	}
 
-	stream, err := llm.StreamChat(context.Background(), req)
+	stream, err := ollamaLLM.StreamChat(context.Background(), req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -259,9 +261,9 @@ func TestOllamaLLM_StreamChat_FinalChunkMetadata(t *testing.T) {
 	}))
 	defer server.Close()
 
-	llm := &OllamaLLM{BaseURL: server.URL}
-	stream, err := llm.StreamChat(context.Background(), &ChatRequest{
-		Messages: []Message{{Role: RoleUser, Content: "test"}},
+	ollamaLLM := &OllamaLLM{BaseURL: server.URL}
+	stream, err := ollamaLLM.StreamChat(context.Background(), &llm.ChatRequest{
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "test"}},
 		Model:    "ministral-3b:cloud",
 	})
 	if err != nil {
@@ -270,7 +272,7 @@ func TestOllamaLLM_StreamChat_FinalChunkMetadata(t *testing.T) {
 	defer stream.Close()
 
 	// Consume all chunks
-	var finalChunk ChatChunk
+	var finalChunk llm.ChatChunk
 	for stream.Next() {
 		finalChunk = stream.Current()
 	}
@@ -279,8 +281,8 @@ func TestOllamaLLM_StreamChat_FinalChunkMetadata(t *testing.T) {
 	}
 
 	// The last chunk should have finish reason and usage
-	if finalChunk.FinishReason != FinishReasonStop {
-		t.Errorf("expected FinishReason %q, got %q", FinishReasonStop, finalChunk.FinishReason)
+	if finalChunk.FinishReason != llm.FinishReasonStop {
+		t.Errorf("expected FinishReason %q, got %q", llm.FinishReasonStop, finalChunk.FinishReason)
 	}
 	if finalChunk.Usage == nil {
 		t.Fatal("expected Usage on final chunk")
@@ -314,9 +316,9 @@ func TestOllamaLLM_StreamChat_ToolCalls(t *testing.T) {
 	}))
 	defer server.Close()
 
-	llm := &OllamaLLM{BaseURL: server.URL}
-	stream, err := llm.StreamChat(context.Background(), &ChatRequest{
-		Messages: []Message{{Role: RoleUser, Content: "weather in Tokyo"}},
+	ollamaLLM := &OllamaLLM{BaseURL: server.URL}
+	stream, err := ollamaLLM.StreamChat(context.Background(), &llm.ChatRequest{
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "weather in Tokyo"}},
 		Model:    "ministral-3b:cloud",
 	})
 	if err != nil {
@@ -324,7 +326,7 @@ func TestOllamaLLM_StreamChat_ToolCalls(t *testing.T) {
 	}
 	defer stream.Close()
 
-	var toolCallChunks []ChatChunk
+	var toolCallChunks []llm.ChatChunk
 	for stream.Next() {
 		chunk := stream.Current()
 		if len(chunk.ToolCalls) > 0 {
@@ -370,11 +372,11 @@ func TestOllamaLLM_StreamChat_ContextCancel(t *testing.T) {
 	}))
 	defer server.Close()
 
-	llm := &OllamaLLM{BaseURL: server.URL}
+	ollamaLLM := &OllamaLLM{BaseURL: server.URL}
 	ctx, cancel := context.WithCancel(context.Background())
 
-	stream, err := llm.StreamChat(ctx, &ChatRequest{
-		Messages: []Message{{Role: RoleUser, Content: "hi"}},
+	stream, err := ollamaLLM.StreamChat(ctx, &llm.ChatRequest{
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "hi"}},
 		Model:    "ministral-3b:cloud",
 	})
 	if err != nil {
@@ -407,13 +409,13 @@ func TestOllamaLLM_ZeroValueDefaults(t *testing.T) {
 	_ = &OllamaLLM{}
 
 	// Compile-time interface check
-	var _ LLM = (*OllamaLLM)(nil)
+	var _ llm.LLM = (*OllamaLLM)(nil)
 }
 
 func TestOllamaLLM_StreamChat_NilRequest(t *testing.T) {
 	t.Parallel()
-	llm := &OllamaLLM{}
-	_, err := llm.StreamChat(context.Background(), nil)
+	ollamaLLM := &OllamaLLM{}
+	_, err := ollamaLLM.StreamChat(context.Background(), nil)
 	if err == nil {
 		t.Fatal("expected error for nil request")
 	}
@@ -421,9 +423,9 @@ func TestOllamaLLM_StreamChat_NilRequest(t *testing.T) {
 
 func TestOllamaLLM_StreamChat_EmptyModel(t *testing.T) {
 	t.Parallel()
-	llm := &OllamaLLM{}
-	_, err := llm.StreamChat(context.Background(), &ChatRequest{
-		Messages: []Message{{Role: RoleUser, Content: "hi"}},
+	ollamaLLM := &OllamaLLM{}
+	_, err := ollamaLLM.StreamChat(context.Background(), &llm.ChatRequest{
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "hi"}},
 	})
 	if err == nil {
 		t.Fatal("expected error for empty model")
@@ -448,9 +450,9 @@ func TestOllamaLLM_Chat_OptionsMapping(t *testing.T) {
 	}))
 	defer server.Close()
 
-	llm := &OllamaLLM{BaseURL: server.URL}
-	_, err := llm.Chat(context.Background(), &ChatRequest{
-		Messages:      []Message{{Role: RoleUser, Content: "hi"}},
+	ollamaLLM := &OllamaLLM{BaseURL: server.URL}
+	_, err := ollamaLLM.Chat(context.Background(), &llm.ChatRequest{
+		Messages:      []llm.Message{{Role: llm.RoleUser, Content: "hi"}},
 		Model:         "ministral-3b:cloud",
 		Temperature:   0.8,
 		MaxTokens:     200,
@@ -487,9 +489,9 @@ func TestOllamaLLM_StreamChat_Non200(t *testing.T) {
 	}))
 	defer server.Close()
 
-	llm := &OllamaLLM{BaseURL: server.URL}
-	_, err := llm.StreamChat(context.Background(), &ChatRequest{
-		Messages: []Message{{Role: RoleUser, Content: "hi"}},
+	ollamaLLM := &OllamaLLM{BaseURL: server.URL}
+	_, err := ollamaLLM.StreamChat(context.Background(), &llm.ChatRequest{
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "hi"}},
 		Model:    "test",
 	})
 	if err == nil {
@@ -505,13 +507,13 @@ func TestOllamaLLM_DoneReasonMapping(t *testing.T) {
 
 	tests := []struct {
 		doneReason string
-		want       FinishReason
+		want       llm.FinishReason
 	}{
-		{"stop", FinishReasonStop},
-		{"length", FinishReasonLength},
-		{"error", FinishReasonError},
-		{"unknown", FinishReasonError},
-		{"", FinishReasonStop}, // default when empty
+		{"stop", llm.FinishReasonStop},
+		{"length", llm.FinishReasonLength},
+		{"error", llm.FinishReasonError},
+		{"unknown", llm.FinishReasonError},
+		{"", llm.FinishReasonStop}, // default when empty
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

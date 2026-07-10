@@ -4,25 +4,25 @@
 
 ## Build & Development
 
-- **Run the app**: `go run .`
-- **Build binary**: `go build -o my-agent .`
+- **Run the app**: `go run ./cmd/my-agent/`
+- **Build binary**: `go build -o my-agent ./cmd/my-agent/`
 - **Install dependencies**: `go mod tidy`
-- **Lint**: `go vet ./...`
-- **Format**: `gofmt -s -w .`
+- **Lint**: `go vet ./internal/... ./cmd/...`
+- **Format**: `gofmt -s -w ./internal/ ./cmd/`
 
 ## Testing
 
-- **Run all tests**: `go test ./...`
-- **Run tests verbosely**: `go test -v ./...`
-- **Run tests with coverage**: `go test -cover ./...`
+- **Run all tests**: `go test ./internal/... ./cmd/...`
+- **Run tests verbosely**: `go test -v ./internal/...`
+- **Run with coverage**: `go test -coverprofile=coverage.out ./internal/... ./cmd/...`
 
-> Tests are in `llm_test.go`, `ollama_test.go`, and `agent_test.go`. The `MockLLM` implementation in `llm.go` echoes the user's input and is designed to simplify unit testing of code that depends on the `LLM` interface.
+> Tests live alongside their packages: `internal/llm/llm_test.go`, `internal/providers/ollama/ollama_test.go`, and `internal/agent/agent_test.go`. The `MockLLM` implementation in `internal/llm/` echoes the user's input and is designed to simplify unit testing of code that depends on the `LLM` interface.
 
 ## Code Style
 
 - **Language**: Go 1.24
 - **Formatted with**: `gofmt` (standard Go tooling)
-- **Linted with**: `go vet`
+- **Linted with**: `go vet` (plus `golangci-lint` when installed — see `.golangci.yml`)
 - **Naming conventions**:
   - Exported types and functions: `PascalCase` (e.g., `ChatRequest`, `MockLLM`)
   - Unexported: `camelCase`
@@ -34,12 +34,29 @@
 ## Architecture
 
 - **Pattern**: Interface-based design — the `LLM` interface abstracts provider-specific implementations; the `Agent` interface orchestrates tool-using conversations
-- **Structure**: Flat package (`package main`) — suitable for early-stage prototyping
+- **Structure**: Module layout with `internal/` subpackages for encapsulation:
+
+```
+my-agent/
+├── internal/
+│   ├── llm/                  # LLM interface + shared types + MockLLM
+│   ├── agent/                # Agent interface + FunctionCallingAgent + MockAgent + MockTool
+│   └── providers/
+│       └── ollama/           # OllamaLLM provider implementation
+├── cmd/
+│   └── my-agent/             # main() — REPL entry point
+├── docs/
+│   └── adr/                  # Architecture Decision Records
+├── .golangci.yml             # Linter configuration
+├── Makefile                  # Build/test/lint/format targets
+└── .github/workflows/ci.yml  # GitHub Actions CI
+```
+
 - **Key files**:
-  - `llm.go` — `LLM` interface definition, shared types (`Message`, `ChatRequest`, `ChatResponse`, `UsageStats`, `FinishReason`, `ChatStream`, `ChatChunk`, `ToolCallDelta`, `ToolCall`, `ToolDef`, `ToolFunction`, `Tool` interface), `MockLLM` implementation, and `MockChatStream` implementation
-  - `ollama.go` — `OllamaLLM` provider implementation for local Ollama instances
-  - `agent.go` — `Agent` interface, `FunctionCallingAgent` (concrete agent with tool-calling loop and parallel tool execution), `AgentStream`, `MockAgent`, `MockTool`
-  - `main.go` — entry point (REPL interactive chat with Ollama)
+  - `internal/llm/llm.go` — `LLM` interface definition, shared types (`Message`, `ChatRequest`, `ChatResponse`, `UsageStats`, `FinishReason`, `ChatStream`, `ChatChunk`, `ToolCallDelta`, `ToolCall`, `ToolDef`, `ToolFunction`, `Tool` interface), `MockLLM` implementation, and `MockChatStream` implementation
+  - `internal/providers/ollama/ollama.go` — `OllamaLLM` provider implementation for local Ollama instances
+  - `internal/agent/agent.go` — `Agent` interface, `FunctionCallingAgent` (concrete agent with tool-calling loop and parallel tool execution), `AgentStream`, `MockAgent`, `MockTool`
+  - `cmd/my-agent/main.go` — entry point (REPL interactive chat with Ollama)
 
 ## Dependencies
 
@@ -82,23 +99,27 @@
 
 ## Key Files
 
-- `llm.go` — `LLM` interface, all shared types, `Tool` interface, `MockLLM`, `MockChatStream`
-- `ollama.go` — `OllamaLLM` provider (stdlib only, connects to Ollama's `/api/chat`)
-- `agent.go` — `Agent` interface, `FunctionCallingAgent`, `AgentStream`, `MockAgent`, `MockTool`
-- `main.go` — REPL entry point (interactive Ollama chat)
+- `internal/llm/llm.go` — `LLM` interface, all shared types, `Tool` interface, `MockLLM`, `MockChatStream`
+- `internal/providers/ollama/ollama.go` — `OllamaLLM` provider (stdlib only, connects to Ollama's `/api/chat`)
+- `internal/agent/agent.go` — `Agent` interface, `FunctionCallingAgent`, `AgentStream`, `MockAgent`, `MockTool`
+- `cmd/my-agent/main.go` — REPL entry point (interactive Ollama chat)
 
 ## Providers
 
-Add a new provider by creating a file (e.g., `openai.go`, `anthropic.go`) with a struct that implements the `LLM` interface:
+Add a new provider by creating a file under `internal/providers/` (e.g., `internal/providers/openai/openai.go`) with a struct that implements the `LLM` interface:
 
 ```go
+package openai
+
+import "my-agent/internal/llm"
+
 type OpenAILLM struct {
 	apiKey string
 }
 
-func (o *OpenAILLM) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) { ... }
+func (o *OpenAILLM) Chat(ctx context.Context, req *llm.ChatRequest) (*llm.ChatResponse, error) { ... }
 func (o *OpenAILLM) Complete(ctx context.Context, prompt string) (string, error) { ... }
-func (o *OpenAILLM) StreamChat(ctx context.Context, req *ChatRequest) (ChatStream, error) { ... }
+func (o *OpenAILLM) StreamChat(ctx context.Context, req *llm.ChatRequest) (llm.ChatStream, error) { ... }
 ```
 
 The built-in `OllamaLLM` uses only stdlib (`net/http`, `encoding/json`, `bufio`). The zero value is usable (defaults to `http://localhost:11434` and `http.DefaultClient`). Tests use `httptest.NewServer` to mock Ollama without a running instance.

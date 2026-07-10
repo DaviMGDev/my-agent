@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"my-agent/internal/llm"
 )
 
 // Agent orchestrates a tool-using conversation with an LLM.
@@ -20,20 +22,20 @@ type Agent interface {
 
 // AgentRequest contains the parameters for an agent execution.
 type AgentRequest struct {
-	Messages      []Message `json:"messages"`
-	Model         string    `json:"model"`
-	Tools         []Tool    `json:"-"`
-	Temperature   float64   `json:"temperature,omitempty"`
-	MaxTokens     int       `json:"max_tokens,omitempty"`
-	MaxIterations int       `json:"max_iterations,omitempty"`
-	StopSequences []string  `json:"stop_sequences,omitempty"`
+	Messages      []llm.Message `json:"messages"`
+	Model         string        `json:"model"`
+	Tools         []llm.Tool    `json:"-"`
+	Temperature   float64       `json:"temperature,omitempty"`
+	MaxTokens     int           `json:"max_tokens,omitempty"`
+	MaxIterations int           `json:"max_iterations,omitempty"`
+	StopSequences []string      `json:"stop_sequences,omitempty"`
 }
 
 // AgentResponse contains the result of an agent execution.
 type AgentResponse struct {
-	Messages []Message   `json:"messages"`  // full conversation history
-	Final    Message     `json:"final"`      // the last assistant message
-	Usage    UsageStats  `json:"usage"`      // cumulative token usage
+	Messages []llm.Message  `json:"messages"`  // full conversation history
+	Final    llm.Message    `json:"final"`      // the last assistant message
+	Usage    llm.UsageStats `json:"usage"`      // cumulative token usage
 }
 
 // AgentEventType categorises an agent stream event.
@@ -58,10 +60,10 @@ type ToolResultEvent struct {
 type AgentChunk struct {
 	Type       AgentEventType   `json:"type"`
 	Content    string           `json:"content,omitempty"`
-	Role       MessageRole      `json:"role,omitempty"`
-	ToolCall   *ToolCallDelta   `json:"tool_call,omitempty"`
+	Role       llm.MessageRole  `json:"role,omitempty"`
+	ToolCall   *llm.ToolCallDelta   `json:"tool_call,omitempty"`
 	ToolResult *ToolResultEvent `json:"tool_result,omitempty"`
-	Usage      *UsageStats      `json:"usage,omitempty"`
+	Usage      *llm.UsageStats  `json:"usage,omitempty"`
 	Done       bool             `json:"done,omitempty"`
 }
 
@@ -115,7 +117,7 @@ func (s *agentStream) Close() error {
 // pattern: call LLM → if tool calls → execute tools in parallel → feed
 // results back → repeat until the LLM responds with content.
 type FunctionCallingAgent struct {
-	LLM        LLM
+	LLM        llm.LLM
 	ChunkDelay time.Duration // when >0, adds delay between stream chunks for testing
 }
 
@@ -135,10 +137,10 @@ func (a *FunctionCallingAgent) Run(ctx context.Context, req *AgentRequest) (*Age
 		maxIter = 10
 	}
 
-	messages := make([]Message, len(req.Messages))
+	messages := make([]llm.Message, len(req.Messages))
 	copy(messages, req.Messages)
 
-	var totalUsage UsageStats
+	var totalUsage llm.UsageStats
 
 	for iter := 0; iter < maxIter; iter++ {
 		select {
@@ -147,7 +149,7 @@ func (a *FunctionCallingAgent) Run(ctx context.Context, req *AgentRequest) (*Age
 		default:
 		}
 
-		chatReq := &ChatRequest{
+		chatReq := &llm.ChatRequest{
 			Messages:      messages,
 			Model:         req.Model,
 			Temperature:   req.Temperature,
@@ -173,8 +175,8 @@ func (a *FunctionCallingAgent) Run(ctx context.Context, req *AgentRequest) (*Age
 			// Execute tools in parallel
 			results := a.executeTools(ctx, resp.Message.ToolCalls, req.Tools)
 			for _, tr := range results {
-				messages = append(messages, Message{
-					Role:    RoleTool,
+				messages = append(messages, llm.Message{
+					Role:    llm.RoleTool,
 					Content: tr,
 				})
 			}
@@ -194,7 +196,7 @@ func (a *FunctionCallingAgent) Run(ctx context.Context, req *AgentRequest) (*Age
 }
 
 // executeTools runs all tool calls in parallel and returns their results as strings.
-func (a *FunctionCallingAgent) executeTools(ctx context.Context, toolCalls []ToolCall, tools []Tool) []string {
+func (a *FunctionCallingAgent) executeTools(ctx context.Context, toolCalls []llm.ToolCall, tools []llm.Tool) []string {
 	results := make([]string, len(toolCalls))
 	var wg sync.WaitGroup
 
@@ -212,7 +214,7 @@ func (a *FunctionCallingAgent) executeTools(ctx context.Context, toolCalls []Too
 			default:
 			}
 
-			var tool Tool
+			var tool llm.Tool
 			for _, t := range tools {
 				if t.Name() == tc.Function.Name {
 					tool = t
@@ -269,10 +271,10 @@ func (a *FunctionCallingAgent) streamLoop(ctx context.Context, req *AgentRequest
 		maxIter = 10
 	}
 
-	messages := make([]Message, len(req.Messages))
+	messages := make([]llm.Message, len(req.Messages))
 	copy(messages, req.Messages)
 
-	var totalUsage UsageStats
+	var totalUsage llm.UsageStats
 
 	for iter := 0; iter < maxIter; iter++ {
 		select {
@@ -282,7 +284,7 @@ func (a *FunctionCallingAgent) streamLoop(ctx context.Context, req *AgentRequest
 		default:
 		}
 
-		chatReq := &ChatRequest{
+		chatReq := &llm.ChatRequest{
 			Messages:      messages,
 			Model:         req.Model,
 			Temperature:   req.Temperature,
@@ -298,9 +300,9 @@ func (a *FunctionCallingAgent) streamLoop(ctx context.Context, req *AgentRequest
 
 		// Accumulate full response from streaming chunks
 		var sb strings.Builder
-		var toolCallDeltas []ToolCallDelta
-		var finalRole MessageRole
-		var finalUsage *UsageStats
+		var toolCallDeltas []llm.ToolCallDelta
+		var finalRole llm.MessageRole
+		var finalUsage *llm.UsageStats
 
 		for llmStream.Next() {
 			chunk := llmStream.Current()
@@ -336,18 +338,18 @@ func (a *FunctionCallingAgent) streamLoop(ctx context.Context, req *AgentRequest
 
 		if len(toolCallDeltas) > 0 {
 			// Build assistant message with tool calls
-			assistantMsg := Message{
+			assistantMsg := llm.Message{
 				Role:    finalRole,
 				Content: sb.String(),
 			}
 			if finalRole == "" {
-				assistantMsg.Role = RoleAssistant
+				assistantMsg.Role = llm.RoleAssistant
 			}
 
 			// Convert deltas to ToolCall and yield events
-			toolCalls := make([]ToolCall, len(toolCallDeltas))
+			toolCalls := make([]llm.ToolCall, len(toolCallDeltas))
 			for i, d := range toolCallDeltas {
-				toolCalls[i] = ToolCall{
+				toolCalls[i] = llm.ToolCall{
 					ID: d.ID,
 					Function: struct {
 						Name      string `json:"name,omitempty"`
@@ -388,8 +390,8 @@ func (a *FunctionCallingAgent) streamLoop(ctx context.Context, req *AgentRequest
 					ToolResult: tre,
 				})
 
-				messages = append(messages, Message{
-					Role:    RoleTool,
+				messages = append(messages, llm.Message{
+					Role:    llm.RoleTool,
 					Content: results[i],
 				})
 			}
@@ -399,12 +401,12 @@ func (a *FunctionCallingAgent) streamLoop(ctx context.Context, req *AgentRequest
 		}
 
 		// LLM responded with content — done
-		assistantMsg := Message{
+		assistantMsg := llm.Message{
 			Role:    finalRole,
 			Content: sb.String(),
 		}
 		if finalRole == "" {
-			assistantMsg.Role = RoleAssistant
+			assistantMsg.Role = llm.RoleAssistant
 		}
 		messages = append(messages, assistantMsg)
 
@@ -510,7 +512,7 @@ type MockTool struct {
 	ExecuteFn        func(ctx context.Context, args map[string]any) (string, error)
 }
 
-var _ Tool = (*MockTool)(nil)
+var _ llm.Tool = (*MockTool)(nil)
 
 func (m *MockTool) Name() string                     { return m.NameValue }
 func (m *MockTool) Description() string               { return m.DescriptionValue }

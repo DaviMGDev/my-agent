@@ -6,14 +6,18 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"my-agent/internal/agent"
+	"my-agent/internal/llm"
+	"my-agent/internal/providers/ollama"
 )
 
 func main() {
-	llm := &OllamaLLM{}
-	agent := &FunctionCallingAgent{LLM: llm}
+	llmProvider := &ollama.OllamaLLM{}
+	ag := &agent.FunctionCallingAgent{LLM: llmProvider}
 	model := "ministral-3:3b-cloud"
 
-	var messages []Message
+	var messages []llm.Message
 	scanner := bufio.NewScanner(os.Stdin)
 
 	fmt.Println("Chat with Ollama (type /exit to quit, /clear to reset)")
@@ -38,14 +42,14 @@ func main() {
 			continue
 		}
 
-		messages = append(messages, Message{Role: RoleUser, Content: input})
+		messages = append(messages, llm.Message{Role: llm.RoleUser, Content: input})
 
-		req := &AgentRequest{
+		req := &agent.AgentRequest{
 			Messages: messages,
 			Model:    model,
 		}
 
-		stream, err := agent.StreamRun(context.Background(), req)
+		stream, err := ag.StreamRun(context.Background(), req)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			fmt.Fprintln(os.Stderr, "(is Ollama running? try: ollama serve)")
@@ -58,16 +62,16 @@ func main() {
 		for stream.Next() {
 			chunk := stream.Current()
 			switch chunk.Type {
-			case AgentEventToken:
+			case agent.AgentEventToken:
 				fmt.Print(chunk.Content)
 				reply.WriteString(chunk.Content)
-			case AgentEventToolCall:
+			case agent.AgentEventToolCall:
 				// The agent is calling a tool — no output shown to the user.
 				// Tool execution and its result are handled internally by the agent.
-			case AgentEventToolResult:
+			case agent.AgentEventToolResult:
 				// Tool result received — no output shown.
 				// The agent will feed this back to the LLM automatically.
-			case AgentEventDone:
+			case agent.AgentEventDone:
 				// Agent finished — break out of the loop.
 			}
 		}
@@ -78,7 +82,7 @@ func main() {
 		}
 		stream.Close()
 
-		messages = append(messages, Message{Role: RoleAssistant, Content: reply.String()})
+		messages = append(messages, llm.Message{Role: llm.RoleAssistant, Content: reply.String()})
 		fmt.Println()
 	}
 

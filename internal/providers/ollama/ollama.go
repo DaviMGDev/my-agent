@@ -1,4 +1,4 @@
-package main
+package ollama
 
 import (
 	"bufio"
@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"my-agent/internal/llm"
 )
 
 // DefaultOllamaBaseURL is the default base URL for a local Ollama instance.
@@ -24,7 +26,7 @@ type OllamaLLM struct {
 	HTTPClient *http.Client
 }
 
-var _ LLM = (*OllamaLLM)(nil)
+var _ llm.LLM = (*OllamaLLM)(nil)
 
 // --- Ollama API wire types ------------------------------------------------
 
@@ -93,11 +95,11 @@ func (o *OllamaLLM) client() *http.Client {
 	return http.DefaultClient
 }
 
-func toOllamaRole(r MessageRole) string {
+func toOllamaRole(r llm.MessageRole) string {
 	return string(r)
 }
 
-func toMessages(msgs []Message) []ollamaMessage {
+func toMessages(msgs []llm.Message) []ollamaMessage {
 	out := make([]ollamaMessage, len(msgs))
 	for i, m := range msgs {
 		om := ollamaMessage{Role: toOllamaRole(m.Role), Content: m.Content}
@@ -109,7 +111,7 @@ func toMessages(msgs []Message) []ollamaMessage {
 	return out
 }
 
-func toOllamaToolCalls(tcs []ToolCall) []ollamaToolCall {
+func toOllamaToolCalls(tcs []llm.ToolCall) []ollamaToolCall {
 	if len(tcs) == 0 {
 		return nil
 	}
@@ -125,7 +127,7 @@ func toOllamaToolCalls(tcs []ToolCall) []ollamaToolCall {
 	return out
 }
 
-func toOptions(req *ChatRequest) *ollamaOptions {
+func toOptions(req *llm.ChatRequest) *ollamaOptions {
 	if req.Temperature == 0 && req.MaxTokens == 0 && len(req.StopSequences) == 0 {
 		return nil
 	}
@@ -142,26 +144,26 @@ func toOptions(req *ChatRequest) *ollamaOptions {
 	return opts
 }
 
-func toFinishReason(doneReason string) FinishReason {
+func toFinishReason(doneReason string) llm.FinishReason {
 	switch doneReason {
 	case "stop":
-		return FinishReasonStop
+		return llm.FinishReasonStop
 	case "length":
-		return FinishReasonLength
+		return llm.FinishReasonLength
 	case "":
-		return FinishReasonStop
+		return llm.FinishReasonStop
 	default:
-		return FinishReasonError
+		return llm.FinishReasonError
 	}
 }
 
-func toToolCallDeltas(ollamaCalls []ollamaToolCall) []ToolCallDelta {
+func toToolCallDeltas(ollamaCalls []ollamaToolCall) []llm.ToolCallDelta {
 	if len(ollamaCalls) == 0 {
 		return nil
 	}
-	deltas := make([]ToolCallDelta, len(ollamaCalls))
+	deltas := make([]llm.ToolCallDelta, len(ollamaCalls))
 	for i, tc := range ollamaCalls {
-		deltas[i] = ToolCallDelta{
+		deltas[i] = llm.ToolCallDelta{
 			Index: i,
 			ID:    fmt.Sprintf("call_%d", i),
 			Function: struct {
@@ -176,13 +178,13 @@ func toToolCallDeltas(ollamaCalls []ollamaToolCall) []ToolCallDelta {
 	return deltas
 }
 
-func toToolCalls(ollamaCalls []ollamaToolCall) []ToolCall {
+func toToolCalls(ollamaCalls []ollamaToolCall) []llm.ToolCall {
 	if len(ollamaCalls) == 0 {
 		return nil
 	}
-	out := make([]ToolCall, len(ollamaCalls))
+	out := make([]llm.ToolCall, len(ollamaCalls))
 	for i, tc := range ollamaCalls {
-		out[i] = ToolCall{
+		out[i] = llm.ToolCall{
 			ID: fmt.Sprintf("call_%d", i),
 			Function: struct {
 				Name      string `json:"name,omitempty"`
@@ -196,7 +198,7 @@ func toToolCalls(ollamaCalls []ollamaToolCall) []ToolCall {
 	return out
 }
 
-func toOllamaTools(tools []Tool) []ollamaToolDef {
+func toOllamaTools(tools []llm.Tool) []ollamaToolDef {
 	if len(tools) == 0 {
 		return nil
 	}
@@ -242,7 +244,7 @@ func (o *OllamaLLM) doRequest(ctx context.Context, body any) (*http.Response, er
 // --- LLM interface implementation -----------------------------------------
 
 // Chat sends a chat completion request to Ollama and returns the response.
-func (o *OllamaLLM) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, error) {
+func (o *OllamaLLM) Chat(ctx context.Context, req *llm.ChatRequest) (*llm.ChatResponse, error) {
 	if req == nil {
 		return nil, fmt.Errorf("ollama: chat request cannot be nil")
 	}
@@ -268,14 +270,14 @@ func (o *OllamaLLM) Chat(ctx context.Context, req *ChatRequest) (*ChatResponse, 
 	return o.toChatResponse(&ollamaResp, req.Model), nil
 }
 
-func (o *OllamaLLM) toChatResponse(ollamaResp *ollamaChatResponse, model string) *ChatResponse {
-	cr := &ChatResponse{
+func (o *OllamaLLM) toChatResponse(ollamaResp *ollamaChatResponse, model string) *llm.ChatResponse {
+	cr := &llm.ChatResponse{
 		Model: model,
-		FinishReason: FinishReasonStop,
+		FinishReason: llm.FinishReasonStop,
 	}
 	if ollamaResp.Message != nil {
-		cr.Message = Message{
-			Role:      MessageRole(ollamaResp.Message.Role),
+		cr.Message = llm.Message{
+			Role:      llm.MessageRole(ollamaResp.Message.Role),
 			Content:   ollamaResp.Message.Content,
 			ToolCalls: toToolCalls(ollamaResp.Message.ToolCalls),
 		}
@@ -284,7 +286,7 @@ func (o *OllamaLLM) toChatResponse(ollamaResp *ollamaChatResponse, model string)
 		cr.FinishReason = toFinishReason(ollamaResp.DoneReason)
 	}
 	if ollamaResp.PromptEvalCount > 0 || ollamaResp.EvalCount > 0 {
-		cr.Usage = UsageStats{
+		cr.Usage = llm.UsageStats{
 			PromptTokens:     ollamaResp.PromptEvalCount,
 			CompletionTokens: ollamaResp.EvalCount,
 			TotalTokens:      ollamaResp.PromptEvalCount + ollamaResp.EvalCount,
@@ -295,9 +297,9 @@ func (o *OllamaLLM) toChatResponse(ollamaResp *ollamaChatResponse, model string)
 
 // Complete sends a single-turn text completion via the chat endpoint.
 func (o *OllamaLLM) Complete(ctx context.Context, prompt string) (string, error) {
-	resp, err := o.Chat(ctx, &ChatRequest{
-		Messages: []Message{
-			{Role: RoleUser, Content: prompt},
+	resp, err := o.Chat(ctx, &llm.ChatRequest{
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Content: prompt},
 		},
 	})
 	if err != nil {
@@ -308,7 +310,7 @@ func (o *OllamaLLM) Complete(ctx context.Context, prompt string) (string, error)
 
 // StreamChat returns a ChatStream that reads newline-delimited JSON from
 // Ollama's streaming /api/chat endpoint.
-func (o *OllamaLLM) StreamChat(ctx context.Context, req *ChatRequest) (ChatStream, error) {
+func (o *OllamaLLM) StreamChat(ctx context.Context, req *llm.ChatRequest) (llm.ChatStream, error) {
 	if req == nil {
 		return nil, fmt.Errorf("ollama: chat request cannot be nil")
 	}
@@ -340,7 +342,7 @@ type ollamaChatStream struct {
 	scanner *bufio.Scanner
 	body    io.ReadCloser
 	model   string
-	current ChatChunk
+	current llm.ChatChunk
 	err     error
 	done    bool
 	closed  bool
@@ -363,13 +365,13 @@ func (s *ollamaChatStream) Next() bool {
 			return false
 		}
 
-		s.current = ChatChunk{
+		s.current = llm.ChatChunk{
 			Content: "",
-			Role:    RoleAssistant,
+			Role:    llm.RoleAssistant,
 		}
 		if chunk.Message != nil {
 			s.current.Content = chunk.Message.Content
-			s.current.Role = MessageRole(chunk.Message.Role)
+			s.current.Role = llm.MessageRole(chunk.Message.Role)
 			if tcs := toToolCallDeltas(chunk.Message.ToolCalls); len(tcs) > 0 {
 				s.current.ToolCalls = tcs
 			}
@@ -380,10 +382,10 @@ func (s *ollamaChatStream) Next() bool {
 			if chunk.DoneReason != "" {
 				s.current.FinishReason = toFinishReason(chunk.DoneReason)
 			} else {
-				s.current.FinishReason = FinishReasonStop
+				s.current.FinishReason = llm.FinishReasonStop
 			}
 			if chunk.PromptEvalCount > 0 || chunk.EvalCount > 0 {
-				s.current.Usage = &UsageStats{
+				s.current.Usage = &llm.UsageStats{
 					PromptTokens:     chunk.PromptEvalCount,
 					CompletionTokens: chunk.EvalCount,
 					TotalTokens:      chunk.PromptEvalCount + chunk.EvalCount,
@@ -400,7 +402,7 @@ func (s *ollamaChatStream) Next() bool {
 	return false
 }
 
-func (s *ollamaChatStream) Current() ChatChunk {
+func (s *ollamaChatStream) Current() llm.ChatChunk {
 	return s.current
 }
 
@@ -415,5 +417,3 @@ func (s *ollamaChatStream) Close() error {
 	}
 	return nil
 }
-
-

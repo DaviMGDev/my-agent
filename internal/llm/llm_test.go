@@ -1,17 +1,19 @@
-package main
+package llm_test
 
 import (
 	"context"
 	"testing"
+
+	"my-agent/internal/llm"
 )
 
 func TestMockLLM_Chat(t *testing.T) {
-	m := &MockLLM{}
+	m := &llm.MockLLM{}
 
 	t.Run("basic echo", func(t *testing.T) {
-		req := &ChatRequest{
-			Messages: []Message{
-				{Role: RoleUser, Content: "Hello"},
+		req := &llm.ChatRequest{
+			Messages: []llm.Message{
+				{Role: llm.RoleUser, Content: "Hello"},
 			},
 			Model:       "mock-model",
 			Temperature: 0.7,
@@ -23,8 +25,8 @@ func TestMockLLM_Chat(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if resp.Message.Role != RoleAssistant {
-			t.Errorf("expected role %q, got %q", RoleAssistant, resp.Message.Role)
+		if resp.Message.Role != llm.RoleAssistant {
+			t.Errorf("expected role %q, got %q", llm.RoleAssistant, resp.Message.Role)
 		}
 		if resp.Message.Content != "Hello" {
 			t.Errorf("expected content %q, got %q", "Hello", resp.Message.Content)
@@ -32,14 +34,14 @@ func TestMockLLM_Chat(t *testing.T) {
 		if resp.Model != "mock-model" {
 			t.Errorf("expected model %q, got %q", "mock-model", resp.Model)
 		}
-		if resp.FinishReason != FinishReasonStop {
-			t.Errorf("expected FinishReason %q, got %q", FinishReasonStop, resp.FinishReason)
+		if resp.FinishReason != llm.FinishReasonStop {
+			t.Errorf("expected FinishReason %q, got %q", llm.FinishReasonStop, resp.FinishReason)
 		}
 	})
 
 	t.Run("empty messages slice", func(t *testing.T) {
-		req := &ChatRequest{
-			Messages: []Message{},
+		req := &llm.ChatRequest{
+			Messages: []llm.Message{},
 			Model:    "mock-model",
 		}
 
@@ -53,7 +55,7 @@ func TestMockLLM_Chat(t *testing.T) {
 	})
 
 	t.Run("nil messages slice", func(t *testing.T) {
-		req := &ChatRequest{
+		req := &llm.ChatRequest{
 			Messages: nil,
 			Model:    "mock-model",
 		}
@@ -68,9 +70,9 @@ func TestMockLLM_Chat(t *testing.T) {
 	})
 
 	t.Run("empty content", func(t *testing.T) {
-		req := &ChatRequest{
-			Messages: []Message{
-				{Role: RoleUser, Content: ""},
+		req := &llm.ChatRequest{
+			Messages: []llm.Message{
+				{Role: llm.RoleUser, Content: ""},
 			},
 			Model: "mock-model",
 		}
@@ -85,12 +87,12 @@ func TestMockLLM_Chat(t *testing.T) {
 	})
 
 	t.Run("multiple messages returns last", func(t *testing.T) {
-		req := &ChatRequest{
-			Messages: []Message{
-				{Role: RoleSystem, Content: "You are a helpful assistant."},
-				{Role: RoleUser, Content: "What is Go?"},
-				{Role: RoleAssistant, Content: "Go is a programming language."},
-				{Role: RoleUser, Content: "Tell me more."},
+		req := &llm.ChatRequest{
+			Messages: []llm.Message{
+				{Role: llm.RoleSystem, Content: "You are a helpful assistant."},
+				{Role: llm.RoleUser, Content: "What is Go?"},
+				{Role: llm.RoleAssistant, Content: "Go is a programming language."},
+				{Role: llm.RoleUser, Content: "Tell me more."},
 			},
 			Model: "mock-model",
 		}
@@ -106,9 +108,9 @@ func TestMockLLM_Chat(t *testing.T) {
 
 	t.Run("usage stats reflect content length", func(t *testing.T) {
 		content := "Hello, World!"
-		req := &ChatRequest{
-			Messages: []Message{
-				{Role: RoleUser, Content: content},
+		req := &llm.ChatRequest{
+			Messages: []llm.Message{
+				{Role: llm.RoleUser, Content: content},
 			},
 			Model: "mock-model",
 		}
@@ -139,7 +141,7 @@ func TestMockLLM_Chat(t *testing.T) {
 }
 
 func TestMockLLM_Complete(t *testing.T) {
-	m := &MockLLM{}
+	m := &llm.MockLLM{}
 
 	t.Run("basic echo", func(t *testing.T) {
 		response, err := m.Complete(context.Background(), "Hello")
@@ -185,12 +187,12 @@ func TestMockLLM_Complete(t *testing.T) {
 }
 
 func TestMockLLM_StreamChat(t *testing.T) {
-	m := &MockLLM{}
+	m := &llm.MockLLM{}
 
 	t.Run("basic stream echoes content", func(t *testing.T) {
-		req := &ChatRequest{
-			Messages: []Message{
-				{Role: RoleUser, Content: "Hello"},
+		req := &llm.ChatRequest{
+			Messages: []llm.Message{
+				{Role: llm.RoleUser, Content: "Hello"},
 			},
 			Model: "mock-model",
 		}
@@ -209,8 +211,8 @@ func TestMockLLM_StreamChat(t *testing.T) {
 		if chunk.Content != "Hello" {
 			t.Errorf("expected content %q, got %q", "Hello", chunk.Content)
 		}
-		if chunk.Role != RoleAssistant {
-			t.Errorf("expected role %q, got %q", RoleAssistant, chunk.Role)
+		if chunk.Role != llm.RoleAssistant {
+			t.Errorf("expected role %q, got %q", llm.RoleAssistant, chunk.Role)
 		}
 
 		// Second chunk: finish reason + usage
@@ -218,8 +220,8 @@ func TestMockLLM_StreamChat(t *testing.T) {
 			t.Fatal("expected second chunk")
 		}
 		chunk = stream.Current()
-		if chunk.FinishReason != FinishReasonStop {
-			t.Errorf("expected FinishReason %q, got %q", FinishReasonStop, chunk.FinishReason)
+		if chunk.FinishReason != llm.FinishReasonStop {
+			t.Errorf("expected FinishReason %q, got %q", llm.FinishReasonStop, chunk.FinishReason)
 		}
 		if chunk.Usage == nil {
 			t.Fatal("expected usage stats")
@@ -245,8 +247,8 @@ func TestMockLLM_StreamChat(t *testing.T) {
 	})
 
 	t.Run("empty messages slice", func(t *testing.T) {
-		req := &ChatRequest{
-			Messages: []Message{},
+		req := &llm.ChatRequest{
+			Messages: []llm.Message{},
 			Model:    "mock-model",
 		}
 
@@ -265,7 +267,7 @@ func TestMockLLM_StreamChat(t *testing.T) {
 	})
 
 	t.Run("nil messages slice", func(t *testing.T) {
-		req := &ChatRequest{
+		req := &llm.ChatRequest{
 			Messages: nil,
 			Model:    "mock-model",
 		}
@@ -285,9 +287,9 @@ func TestMockLLM_StreamChat(t *testing.T) {
 	})
 
 	t.Run("empty content", func(t *testing.T) {
-		req := &ChatRequest{
-			Messages: []Message{
-				{Role: RoleUser, Content: ""},
+		req := &llm.ChatRequest{
+			Messages: []llm.Message{
+				{Role: llm.RoleUser, Content: ""},
 			},
 			Model: "mock-model",
 		}
@@ -307,12 +309,12 @@ func TestMockLLM_StreamChat(t *testing.T) {
 	})
 
 	t.Run("multiple messages returns last", func(t *testing.T) {
-		req := &ChatRequest{
-			Messages: []Message{
-				{Role: RoleSystem, Content: "You are a helpful assistant."},
-				{Role: RoleUser, Content: "What is Go?"},
-				{Role: RoleAssistant, Content: "Go is a programming language."},
-				{Role: RoleUser, Content: "Tell me more."},
+		req := &llm.ChatRequest{
+			Messages: []llm.Message{
+				{Role: llm.RoleSystem, Content: "You are a helpful assistant."},
+				{Role: llm.RoleUser, Content: "What is Go?"},
+				{Role: llm.RoleAssistant, Content: "Go is a programming language."},
+				{Role: llm.RoleUser, Content: "Tell me more."},
 			},
 			Model: "mock-model",
 		}
@@ -339,9 +341,9 @@ func TestMockLLM_StreamChat(t *testing.T) {
 	})
 
 	t.Run("close mid-stream stops iteration", func(t *testing.T) {
-		req := &ChatRequest{
-			Messages: []Message{
-				{Role: RoleUser, Content: "Hello"},
+		req := &llm.ChatRequest{
+			Messages: []llm.Message{
+				{Role: llm.RoleUser, Content: "Hello"},
 			},
 			Model: "mock-model",
 		}
@@ -371,9 +373,9 @@ func TestMockLLM_StreamChat(t *testing.T) {
 	})
 
 	t.Run("multiple close is safe", func(t *testing.T) {
-		req := &ChatRequest{
-			Messages: []Message{
-				{Role: RoleUser, Content: "Hello"},
+		req := &llm.ChatRequest{
+			Messages: []llm.Message{
+				{Role: llm.RoleUser, Content: "Hello"},
 			},
 			Model: "mock-model",
 		}
