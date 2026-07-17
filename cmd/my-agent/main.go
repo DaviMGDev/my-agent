@@ -43,7 +43,7 @@ func main() {
 	m.modelName = "gemma4:31b-cloud"
 	m.tools = registeredTools
 
-	p := tea.NewProgram(&m, tea.WithAltScreen())
+	p := tea.NewProgram(&m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	m.program = p
 
 	if _, err := p.Run(); err != nil {

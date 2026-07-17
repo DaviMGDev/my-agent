@@ -21,6 +21,12 @@ var (
 			BorderForeground(lipgloss.Color("62")).
 			Padding(0, 1)
 
+	// Focused border variant — pink, used when a component is active
+	focusedBorderStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("212")).
+				Padding(0, 1)
+
 	// Active session (currently selected)
 	activeSessionStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("212")).

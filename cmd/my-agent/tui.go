@@ -9,7 +9,7 @@ import (
 	"my-agent/internal/llm"
 
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -48,9 +48,16 @@ type model struct {
 	spContent int // cached sidepanel content width (inside border+padding)
 
 	// Components
-	textInput    textinput.Model
+	textInput    textarea.Model
 	vp           viewport.Model
 	spinnerModel spinner.Model
+
+	// Focus state
+	focusIndex int // 0 = text input, 1 = viewport, 2 = side panel
+
+	// Layout state
+	showSidePanel      bool // actual visibility (may be forced by resize)
+	userWantsSidePanel bool // user's preference (restored after resize)
 
 	// Streaming state
 	loading  bool
@@ -59,29 +66,34 @@ type model struct {
 }
 
 func initialModel() model {
-	ti := textinput.New()
-	ti.Placeholder = "Type a message…"
-	ti.Focus()
-	ti.CharLimit = 4096
-	ti.Width = 60
+	ta := textarea.New()
+	ta.Placeholder = "Type a message…"
+	ta.Focus()
+	ta.CharLimit = 4096
+	ta.MaxHeight = 5
+	ta.ShowLineNumbers = false
+	ta.SetWidth(60)
 
 	sp := spinner.New()
 	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("62"))
 	sp.Spinner = spinner.Dot
 
 	return model{
-		sessions:     []*Session{NewSession(0, "Session 1")},
-		activeIdx:    0,
-		textInput:    ti,
-		spinnerModel: sp,
-		replyBuf:     &strings.Builder{},
+		sessions:          []*Session{NewSession(0, "Session 1")},
+		activeIdx:         0,
+		textInput:         ta,
+		spinnerModel:      sp,
+		focusIndex:        0,
+		showSidePanel:     true,
+		userWantsSidePanel: true,
+		replyBuf:          &strings.Builder{},
 	}
 }
 
 // --- Init ----------------------------------------------------------------
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(textinput.Blink, spinner.Tick)
+	return tea.Batch(textarea.Blink, spinner.Tick)
 }
 
 // --- Update ---------------------------------------------------------------
@@ -116,22 +128,41 @@ func (m model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.width = msg.Width
 	m.height = msg.Height
 
-	// Sidepanel content width: 25% of terminal minus border+padding overhead (4).
-	overhead := 4
-	spTotal := m.width * 25 / 100
-	if spTotal < 24 {
-		spTotal = 24
+	// Resize guards — auto-hide the side panel on narrow terminals.
+	const narrowThreshold = 50
+	if msg.Width < narrowThreshold {
+		m.showSidePanel = false
+	} else if m.userWantsSidePanel {
+		m.showSidePanel = true
 	}
-	m.spContent = spTotal - overhead
 
-	// Main area content width: remaining width minus same overhead.
+	// Compute side panel and main area widths.
+	overhead := 4 // border + padding on one column
+	var spTotal int
+	if m.showSidePanel {
+		spTotal = m.width * 25 / 100
+		if m.width >= 80 && spTotal < 24 {
+			spTotal = 24
+		} else if m.width < 80 && spTotal < 20 {
+			spTotal = 20
+		}
+	}
+
+	// Main area content width fills the rest.
 	mainContent := m.width - spTotal - overhead
+	if !m.showSidePanel {
+		mainContent = m.width - overhead // reclaim side panel width
+	}
 	if mainContent < 20 {
 		mainContent = 20
 	}
 
-	// Vertical layout: messages box + input box (3 content rows + 2 border rows each)
-	vpHeight := m.height - 2 - 3 - 2 // total - input box - both box borders
+	m.spContent = spTotal - overhead
+
+	// Vertical layout: viewport fills available height minus input box.
+	// Textarea can be up to 5 lines, account for max + border.
+	inputBoxHeight := 5 + 2
+	vpHeight := m.height - inputBoxHeight
 	if vpHeight < 10 {
 		vpHeight = 10
 	}
@@ -143,7 +174,7 @@ func (m model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 		m.vp.Width = mainContent
 		m.vp.Height = vpHeight
 	}
-	m.textInput.Width = mainContent
+	m.textInput.SetWidth(mainContent)
 
 	return &m, nil
 }
@@ -151,49 +182,151 @@ func (m model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 // --- Key handling ---------------------------------------------------------
 
 func (m model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Global keys — handled regardless of focus
 	switch msg.Type {
 	case tea.KeyCtrlC, tea.KeyEsc:
 		return &m, tea.Quit
 
 	case tea.KeyTab:
 		if !m.loading {
-			m.activeIdx = (m.activeIdx + 1) % len(m.sessions)
-			m.refreshViewport()
+			if m.showSidePanel {
+				m.focusIndex = (m.focusIndex + 1) % 3
+			} else {
+				// Only 2 components when side panel is hidden
+				m.focusIndex = (m.focusIndex + 1) % 2
+			}
 		}
 		return &m, nil
 
 	case tea.KeyShiftTab:
 		if !m.loading {
-			m.activeIdx = (m.activeIdx - 1 + len(m.sessions)) % len(m.sessions)
-			m.refreshViewport()
-		}
-		return &m, nil
-
-	case tea.KeyCtrlN:
-		if !m.loading {
-			id := len(m.sessions)
-			sess := NewSession(id, fmt.Sprintf("Session %d", id+1))
-			m.sessions = append(m.sessions, sess)
-			m.activeIdx = id
-			m.refreshViewport()
-		}
-		return &m, nil
-	}
-
-	if !m.loading && m.ready {
-		var cmd tea.Cmd
-		m.textInput, cmd = m.textInput.Update(msg)
-
-		if msg.Type == tea.KeyEnter {
-			input := strings.TrimSpace(m.textInput.Value())
-			if input != "" {
-				m.textInput.SetValue("")
-				m.startStream(input)
+			if m.showSidePanel {
+				m.focusIndex = (m.focusIndex - 1 + 3) % 3
+			} else {
+				m.focusIndex = (m.focusIndex - 1 + 2) % 2
 			}
 		}
-		return &m, cmd
+		return &m, nil
+
+	case tea.KeyCtrlB:
+		if !m.loading {
+			m.userWantsSidePanel = !m.userWantsSidePanel
+			m.showSidePanel = m.userWantsSidePanel
+			m.refreshViewport()
+		}
+		return &m, nil
 	}
 
+	// Component dispatch
+	if !m.loading {
+		switch m.focusIndex {
+		case 0:
+			return m.handleInputKey(msg)
+		case 1:
+			return m.handleViewportKey(msg)
+		case 2:
+			return m.handleSidepanelKey(msg)
+		}
+	}
+
+	return &m, nil
+}
+
+// handleInputKey processes keys when the text input is focused.
+func (m model) handleInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if !m.ready {
+		return &m, nil
+	}
+
+	sess := m.sessions[m.activeIdx]
+
+	// History navigation
+	if msg.Type == tea.KeyUp {
+		if sess.HistoryPos == -1 {
+			// Save current input before browsing
+			sess.PendingInput = m.textInput.Value()
+			sess.HistoryPos = len(sess.InputHistory) - 1
+		} else if sess.HistoryPos > 0 {
+			sess.HistoryPos--
+		} else {
+			return &m, nil // already at oldest entry
+		}
+		m.textInput.SetValue(sess.InputHistory[sess.HistoryPos])
+		m.textInput.SetCursor(len(sess.InputHistory[sess.HistoryPos]))
+		return &m, nil
+	}
+
+	if msg.Type == tea.KeyDown {
+		if sess.HistoryPos >= 0 {
+			sess.HistoryPos++
+			if sess.HistoryPos >= len(sess.InputHistory) {
+				// Return to pending input
+				sess.HistoryPos = -1
+				m.textInput.SetValue(sess.PendingInput)
+				m.textInput.SetCursor(len(sess.PendingInput))
+			} else {
+				m.textInput.SetValue(sess.InputHistory[sess.HistoryPos])
+				m.textInput.SetCursor(len(sess.InputHistory[sess.HistoryPos]))
+			}
+		}
+		return &m, nil
+	}
+
+	// Regular text input update
+	var cmd tea.Cmd
+	m.textInput, cmd = m.textInput.Update(msg)
+
+	if msg.Type == tea.KeyEnter {
+		input := strings.TrimSpace(m.textInput.Value())
+		if input != "" {
+			m.textInput.SetValue("")
+			sess.AddToHistory(input)
+			m.startStream(input)
+		}
+	}
+	return &m, cmd
+}
+
+// handleViewportKey processes keys when the chat viewport is focused.
+func (m model) handleViewportKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if !m.ready {
+		return &m, nil
+	}
+	m.vp, _ = m.vp.Update(msg)
+	return &m, nil
+}
+
+// handleSidepanelKey processes keys when the session side panel is focused.
+func (m model) handleSidepanelKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyUp:
+		if m.activeIdx > 0 {
+			m.activeIdx--
+			m.refreshViewport()
+		}
+	case tea.KeyDown:
+		if m.activeIdx < len(m.sessions)-1 {
+			m.activeIdx++
+			m.refreshViewport()
+		}
+	case tea.KeyEnter:
+		// Switch to the selected session (already active)
+		m.refreshViewport()
+	case tea.KeyCtrlN:
+		id := len(m.sessions)
+		sess := NewSession(id, fmt.Sprintf("Session %d", id+1))
+		m.sessions = append(m.sessions, sess)
+		m.activeIdx = id
+		m.refreshViewport()
+	case tea.KeyDelete, tea.KeyBackspace:
+		if len(m.sessions) > 1 {
+			m.sessions = append(m.sessions[:m.activeIdx], m.sessions[m.activeIdx+1:]...)
+			if m.activeIdx >= len(m.sessions) {
+				m.activeIdx = len(m.sessions) - 1
+			}
+			m.refreshViewport()
+		}
+	}
 	return &m, nil
 }
 
@@ -283,6 +416,7 @@ func (m model) handleStreamChunk(msg streamChunkMsg) (tea.Model, tea.Cmd) {
 
 func (m model) handleStreamDone(msg streamDoneMsg) (tea.Model, tea.Cmd) {
 	m.loading = false
+	m.focusIndex = 0 // return focus to input
 
 	if msg.err != nil {
 		m.err = msg.err
@@ -319,27 +453,30 @@ func (m model) View() string {
 		return "Initializing…"
 	}
 
-	// Render sidepanel, measure its actual rendered width, then make the main
-	// area fill whatever horizontal space remains.  We use lipgloss.Place to
-	// force the right column to the exact remaining width, eliminating any
-	// one-column gaps from lipgloss width rounding.
-	left := m.renderSidepanel(m.spContent)
-	leftWidth := lipgloss.Width(left)
+	if m.showSidePanel {
+		// Render sidepanel, measure its actual rendered width, then make the main
+		// area fill whatever horizontal space remains.
+		left := m.renderSidepanel(m.spContent)
+		leftWidth := lipgloss.Width(left)
 
-	rightTotal := m.width - leftWidth + 2
-	if rightTotal < 20 {
-		rightTotal = 20
+		rightTotal := m.width - leftWidth + 2
+		if rightTotal < 20 {
+			rightTotal = 20
+		}
+		rightRaw := m.renderMain(rightTotal)
+		right := lipgloss.Place(
+			rightTotal,
+			lipgloss.Height(rightRaw),
+			lipgloss.Left,
+			lipgloss.Top,
+			rightRaw,
+		)
+
+		return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	}
-	rightRaw := m.renderMain(rightTotal)
-	right := lipgloss.Place(
-		rightTotal,
-		lipgloss.Height(rightRaw),
-		lipgloss.Left,
-		lipgloss.Top,
-		rightRaw,
-	)
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+	// Side panel hidden — main area takes full width.
+	return m.renderMain(m.width)
 }
 
 func (m model) renderSidepanel(width int) string {
@@ -359,13 +496,21 @@ func (m model) renderSidepanel(width int) string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("Tab next"))
+	b.WriteString(helpStyle.Render("Tab cycle"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("↑↓ select"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("Del delete"))
 	b.WriteString("\n")
 	b.WriteString(helpStyle.Render("Ctrl+N new"))
 	b.WriteString("\n")
 	b.WriteString(helpStyle.Render("Esc quit"))
 
-	return sidePanelStyle.Width(width).Height(m.height - 2).Render(b.String())
+	panelStyle := sidePanelStyle
+	if m.focusIndex == 2 {
+		panelStyle = focusedBorderStyle
+	}
+	return panelStyle.Width(width).Height(m.height - 2).Render(b.String())
 }
 
 func (m model) renderMain(totalWidth int) string {
@@ -385,12 +530,21 @@ func (m model) renderMain(totalWidth int) string {
 	if m.loading {
 		inputLine = m.spinnerModel.View() + " Thinking…"
 	} else {
-		m.textInput.Width = contentWidth
+		m.textInput.SetWidth(contentWidth)
 		inputLine = m.textInput.View()
 	}
 
-	msgBox := messagesStyle.Width(contentWidth).Render(vpContent)
-	inputBox := inputAreaStyle.Width(contentWidth).Height(3).Render(inputLine)
+	msgStyle := messagesStyle
+	if m.focusIndex == 1 {
+		msgStyle = focusedBorderStyle
+	}
+	inputStyle := inputAreaStyle
+	if m.focusIndex == 0 {
+		inputStyle = focusedBorderStyle
+	}
+
+	msgBox := msgStyle.Width(contentWidth).Render(vpContent)
+	inputBox := inputStyle.Width(contentWidth).Render(inputLine)
 
 	return lipgloss.JoinVertical(lipgloss.Left, msgBox, inputBox)
 }
