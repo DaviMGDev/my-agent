@@ -51,7 +51,7 @@ Key decisions within this structure:
 
 - **`cmd/my-agent/` (package `main`)**: Contains the REPL entry point. Imports from both `internal/agent` and `internal/providers/ollama`. This is the only package with a `main()` function.
 
-- **Test packages**: Tests use the same package as their source code (`package llm`, `package agent`, `package ollama`) to allow access to unexported helpers where needed (e.g., `ollama_test.go` accesses `ollamaChatRequest` wire types; `agent_test.go` accesses `agentStream`).
+- **Test packages**: Tests may use either the same package (e.g., `package agent`, `package ollama`, `package bus`) for access to unexported helpers, or an external test package (`package llm_test`) for black-box testing. Same-package tests access internal types like `ollamaChatRequest` and `agentStream`; external test packages enforce interface-only access.
 
 ## Consequences
 

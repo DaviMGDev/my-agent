@@ -6,7 +6,7 @@
 
 ## Context
 
-The `my-agent` REPL (`cmd/my-agent/main.go`) currently uses `bufio.Scanner` for line-based input and prints assistant responses to stdout. Users frequently want to copy the last assistant response — code blocks, structured data, file paths returned by tools — either to paste elsewhere or to feed back into the conversation.
+The `my-agent` Bubble Tea TUI (`cmd/my-agent/tui.go`) renders agent responses inside a styled viewport. Users frequently want to copy the last assistant response — code blocks, structured data, file paths returned by tools — either to paste elsewhere or to feed back into the conversation.
 
 The current workflow requires users to:
 
@@ -19,8 +19,8 @@ For long responses (multi-paragraph explanations, code snippets, tool results), 
 Existing constraints inform the solution:
 
 - **Zero external dependencies** (stdlib only — the project's design intent).
-- **ADR 003 (Proposed)** defines a `Block`-based TUI rendering primitive with a viewport that holds `[]Block`. A keybinding would integrate naturally with that model once built.
-- **Current REPL is line-buffered** — `bufio.Scanner` does not support individual keypress detection. Adding raw-mode keybindings requires terminal mode changes.
+- **ADR 003** defines a `Block`/`InlineBlock`-based TUI rendering model with a viewport that holds `[]Block`. A keybinding would integrate naturally with that model once implemented.
+- **Bubble Tea's event loop** supports individual keypress detection — a `/copy` command or keybinding can be handled directly in `handleKeyMsg()` without raw terminal mode changes.
 
 ## Decision
 
@@ -49,9 +49,9 @@ Detection is a one-time probe at startup (`exec.LookPath`) — the first found t
 
 Ship an optional Python script at `scripts/copy-key.py` that users can bind to a keyboard shortcut in their terminal emulator or window manager. The script reads from stdin and writes to the clipboard (using `pyperclip` or platform commands). This is not a REPL feature — it is a user-convenience for those who want a system-level keybind.
 
-### 3. Future: Native TUI Keybinding (When ADR 003 Is Implemented)
+### 3. Future: Native TUI Keybinding (When ADR 003 Primitives Are Implemented)
 
-When the `Block`-based TUI viewport from ADR 003 is built, add a **Ctrl+Y** keybinding that copies the last rendered block's content via **OSC 52** (terminal clipboard escape sequence). OSC 52 requires no external dependencies — it writes a control sequence to stdout that the terminal emulator interprets as a clipboard write.
+When the `Block`-based TUI viewport from ADR 003 is implemented, add a **Ctrl+Y** keybinding that copies the last rendered block's content via **OSC 52** (terminal clipboard escape sequence). OSC 52 requires no external dependencies — it writes a control sequence to stdout that the terminal emulator interprets as a clipboard write.
 
 ```go
 // OSC 52 clipboard write — zero deps, works over SSH.
@@ -83,7 +83,7 @@ This approach:
 - **Zero new dependencies** — Both `/copy` (shelling out) and future OSC 52 (control sequences) use only stdlib.
 - **Cross-platform clipboard** — Detection logic handles Linux, macOS, and Windows gracefully.
 - **Graceful degradation** — If no clipboard tool is found, `/copy` becomes a guided print-to-terminal instruction.
-- **Future-proofing** — The OSC 52 approach aligns with the TUI direction in ADR 003 and avoids re-designing the feature later.
+- **Future-proofing** — The OSC 52 approach aligns with the TUI primitives in ADR 003 and avoids re-designing the feature later.
 - **Testable** — The clipboard dispatch can be tested by injecting a `ClipboardWriter` interface:
 
 ```go
