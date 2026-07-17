@@ -2,6 +2,16 @@
 
 Planned features and improvements for my-agent.
 
+## Session Management
+
+Multi-session conversation management, a prerequisite for the TUI.
+
+- Create, switch between, and delete sessions
+- Each session maintains independent conversation history (`[]llm.Message`)
+- Sessions stored in-memory (initial), with optional persistence later
+- Active session highlighted in sidepanel via `▶` indicator
+- Sessions tracked by numeric ID and display name
+
 ## REPL TUI
 
 Build an interactive terminal UI for chatting with agents.
