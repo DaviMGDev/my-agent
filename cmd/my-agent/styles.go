@@ -1,0 +1,55 @@
+package main
+
+import "github.com/charmbracelet/lipgloss"
+
+var (
+	// Side panel
+	sidePanelStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("62")).
+			Padding(0, 1)
+
+	// Chat messages container
+	messagesStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("62")).
+			Padding(0, 1)
+
+	// Text input container
+	inputAreaStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("62")).
+			Padding(0, 1)
+
+	// Active session (currently selected)
+	activeSessionStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("212")).
+				Bold(true)
+
+	// Inactive session
+	inactiveSessionStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("250"))
+
+	// Header / panel title
+	headerStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("62")).
+			Padding(0, 1)
+
+	// User message prefix
+	userMsgStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("39"))
+
+	// Assistant message
+	assistantMsgStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("255"))
+
+	// Tool message
+	toolMsgStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("243")).
+			Faint(true)
+
+	// Help / footer text
+	helpStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240"))
+)
