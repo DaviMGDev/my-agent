@@ -24,6 +24,12 @@ type streamDoneMsg struct {
 	err error
 }
 
+// Layout constants.
+const (
+	footerHeight        = 1
+	sessionHeaderLines  = 3 // session name inlineblock (1) + spacing (2)
+)
+
 // --- Model ---
 
 type model struct {
@@ -61,6 +67,8 @@ type model struct {
 	loading  bool
 	replyBuf *strings.Builder // pointer so value-receiver Update doesn't copy a used Builder
 	err      error
+
+
 }
 
 func initialModel() model {
@@ -148,8 +156,8 @@ func (m model) handleWindowSize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 
 	m.spContent = spTotal - overhead
 
-	// Viewport fills the full height minus the message box border (2 lines).
-	vpHeight := m.height - 2
+	// Viewport fills the remaining height after accounting for border (2), footer (1), and session header (3).
+	vpHeight := m.height - 2 - footerHeight - sessionHeaderLines
 	if vpHeight < 5 {
 		vpHeight = 5
 	}
@@ -368,6 +376,7 @@ func (m model) View() string {
 		return "Initializing…"
 	}
 
+	var mainArea string
 	if m.showSidePanel {
 		left := m.renderSidepanel(m.spContent)
 		leftWidth := lipgloss.Width(left)
@@ -377,46 +386,68 @@ func (m model) View() string {
 			rightTotal = 20
 		}
 		right := m.renderMain(rightTotal)
-
-		return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+		mainArea = lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+	} else {
+		// Side panel hidden — main area takes full width.
+		mainArea = m.renderMain(m.width)
 	}
 
-	// Side panel hidden — main area takes full width.
-	return m.renderMain(m.width)
+	footer := m.renderFooter(m.width)
+	return lipgloss.JoinVertical(lipgloss.Top, mainArea, footer)
 }
 
 func (m model) renderSidepanel(width int) string {
 	var b strings.Builder
-	b.WriteString(headerStyle.Render("Sessions"))
-	b.WriteString("\n")
-	b.WriteString(strings.Repeat("─", width-2))
+
+	// Title as InlineBlock.
+	innerWidth := width - 2
+	titleIB := InlineBlock{
+		Content:    "Sessions",
+		Border:     "square",
+		Foreground: "62",
+		Weight:     "fill",
+	}
+	b.WriteString(titleIB.Render(innerWidth))
 	b.WriteString("\n\n")
 
 	for i, sess := range m.sessions {
 		if i == m.activeIdx {
-			b.WriteString(activeSessionStyle.Render("▶ " + sess.Name))
+			ib := InlineBlock{
+				Content:    "▶ " + sess.Name,
+				Border:     "pointed",
+				Foreground: "212",
+				Weight:     "fill",
+			}
+			b.WriteString(ib.Render(innerWidth))
 		} else {
-			b.WriteString(inactiveSessionStyle.Render("  " + sess.Name))
+			ib := InlineBlock{
+				Content:    "  " + sess.Name,
+				Border:     "none",
+				Foreground: "250",
+				Weight:     "fill",
+			}
+			b.WriteString(ib.Render(innerWidth))
 		}
 		b.WriteString("\n")
 	}
-
-	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("Tab cycle"))
-	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("↑↓ select"))
-	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("Del delete"))
-	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("Ctrl+N new"))
-	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("Esc quit"))
 
 	panelStyle := sidePanelStyle
 	if m.focusIndex == 1 {
 		panelStyle = focusedBorderStyle
 	}
-	return panelStyle.Width(width).Height(m.height - 2).Render(b.String())
+	return panelStyle.Width(width).Height(m.height - 2 - footerHeight).Render(b.String())
+}
+
+func (m model) renderFooter(width int) string {
+	helpText := "Tab cycle • ↑↓ select • Del delete • Ctrl+N new • Esc quit"
+	ib := InlineBlock{
+		Content:    helpText,
+		Border:     "square",
+		Foreground: "240",
+		Weight:     "fill",
+		Position:   "center",
+	}
+	return ib.Render(width)
 }
 
 func (m model) renderMain(totalWidth int) string {
@@ -426,10 +457,22 @@ func (m model) renderMain(totalWidth int) string {
 	}
 
 	m.vp.Width = contentWidth
-	vpContent := m.vp.View()
+
+	// Session name header as InlineBlock.
+	sess := m.sessions[m.activeIdx]
+	sessionIB := InlineBlock{
+		Content:    sess.Name,
+		Border:     "square",
+		Foreground: "62",
+		Weight:     "fill",
+	}
+	var content strings.Builder
+	content.WriteString(sessionIB.Render(contentWidth))
+	content.WriteString("\n\n")
+	content.WriteString(m.vp.View())
 
 	if m.loading {
-		vpContent += "\n" + m.spinnerModel.View() + " Thinking…"
+		content.WriteString("\n" + m.spinnerModel.View() + " Thinking…")
 	}
 
 	msgStyle := messagesStyle
@@ -437,7 +480,7 @@ func (m model) renderMain(totalWidth int) string {
 		msgStyle = focusedBorderStyle
 	}
 
-	return msgStyle.Width(contentWidth).Render(vpContent)
+	return msgStyle.Width(contentWidth).Render(content.String())
 }
 
 func (m model) renderMessages(sess *Session, streaming string) string {

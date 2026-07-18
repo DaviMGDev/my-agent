@@ -27,21 +27,6 @@ var (
 				BorderForeground(lipgloss.Color("212")).
 				Padding(0, 1)
 
-	// Active session (currently selected)
-	activeSessionStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("212")).
-				Bold(true)
-
-	// Inactive session
-	inactiveSessionStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("250"))
-
-	// Header / panel title
-	headerStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("62")).
-			Padding(0, 1)
-
 	// User message prefix
 	userMsgStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("39"))
@@ -55,7 +40,5 @@ var (
 			Foreground(lipgloss.Color("243")).
 			Faint(true)
 
-	// Help / footer text
-	helpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240"))
+	// (footer now rendered via InlineBlock in renderFooter)
 )
