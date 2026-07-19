@@ -8,6 +8,7 @@ import (
 	"my-agent/internal/llm"
 	"my-agent/internal/providers/ollama"
 	"my-agent/internal/tools"
+	"my-agent/internal/tui"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -38,13 +39,13 @@ func main() {
 
 	// --- TUI setup ---
 
-	m := initialModel()
-	m.agent = ag
-	m.modelName = "gemma4:31b-cloud"
-	m.tools = registeredTools
+	m := tui.NewModel()
+	m.Agent = ag
+	m.ModelName = "gemma4:31b-cloud"
+	m.Tools = registeredTools
 
-	p := tea.NewProgram(&m, tea.WithAltScreen(), tea.WithMouseCellMotion())
-	m.program = p
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	m.Program = p
 
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

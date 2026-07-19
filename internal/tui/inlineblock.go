@@ -1,4 +1,4 @@
-package main
+package tui
 
 import (
 	"strings"
@@ -6,8 +6,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// InlineBlock is a single-line rendering primitive with powerline-style
-// glyph borders (no vertical border lines — only left/right glyphs).
+// InlineBlock is a single-line rendering primitive with glyph borders
+// (no vertical border lines — only left/right glyphs).
 // Suitable for headers, status bars, footer, session items, and other
 // compact UI elements.
 type InlineBlock struct {
@@ -15,12 +15,11 @@ type InlineBlock struct {
 	Content string
 
 	// Border controls the glyph style.
-	// Supported: "none", "square", "pointed", "slanted", "round".
-	// All use powerline glyphs with no top/bottom border lines.
+	// Supported: "none", "square", "pointed", "slanted", "round",
+	//            "powerline" (uses / glyphs for header bridging effect).
 	Border string
 
-	// Padding is (horizontal, vertical). Vertical padding within a
-	// single-line block is minimal (0-1).
+	// Padding is (horizontal, vertical).
 	Padding [2]int
 
 	// Background fill color. Empty string means transparent.
@@ -50,6 +49,7 @@ type InlineBlock struct {
 }
 
 // borderGlyphs returns the left and right border glyphs for the given border type.
+// For "powerline", it returns the background color so the caller can apply it.
 func (ib InlineBlock) borderGlyphs() (string, string) {
 	switch ib.Border {
 	case "square":
@@ -60,6 +60,8 @@ func (ib InlineBlock) borderGlyphs() (string, string) {
 		return "╱", "╲"
 	case "round":
 		return "╭", "╮"
+	case "powerline":
+		return "\ue0b6", "\ue0b4"
 	default:
 		return "", ""
 	}
@@ -116,13 +118,11 @@ func (ib InlineBlock) Render(width int) string {
 
 	case "wrap":
 		// Natural width — no adjustment.
-		// If wider than avail, truncate (wrap=false case, but we keep the line).
 		if lipgloss.Width(content) > avail {
 			content = truncateString(content, avail)
 		}
 
 	default: // "none"
-		// Apply position if set, otherwise use padding from style.
 		switch ib.Position {
 		case "center":
 			cLen := lipgloss.Width(content)
@@ -147,27 +147,32 @@ func (ib InlineBlock) Render(width int) string {
 				content = truncateString(content, avail)
 			}
 		default:
-			// Respect padding only — if content overflows avail it will be
-			// truncated by the layout, but we keep the line intact.
+			// Respect padding only.
 		}
+	}
+
+	// Build the border style — for powerline, match the background color
+	// so the glyphs visually bridge into the background.
+	borderStyle := lipgloss.NewStyle()
+	if ib.Border == "powerline" && ib.Background != "" {
+		borderStyle = borderStyle.Foreground(lipgloss.Color(ib.Background))
 	}
 
 	// Assemble final line.
 	var b strings.Builder
 	if leftGlyph != "" {
-		b.WriteString(leftGlyph)
+		b.WriteString(borderStyle.Render(leftGlyph))
 		b.WriteString(" ")
 	}
 	b.WriteString(style.Render(content))
 	if rightGlyph != "" {
 		b.WriteString(" ")
-		b.WriteString(rightGlyph)
+		b.WriteString(borderStyle.Render(rightGlyph))
 	}
 	return b.String()
 }
 
 // truncateString truncates s to at most maxWidth runes.
-// Works correctly for ASCII content (session names, help text).
 func truncateString(s string, maxWidth int) string {
 	if maxWidth < 0 {
 		return ""
@@ -177,4 +182,85 @@ func truncateString(s string, maxWidth int) string {
 		return s
 	}
 	return string(runes[:maxWidth])
+}
+
+// visibleRunes returns the runes of s with all ANSI escape sequences stripped.
+func visibleRunes(s string) []rune {
+	var out []rune
+	runes := []rune(s)
+	i := 0
+	for i < len(runes) {
+		if runes[i] == '\x1b' {
+			i++
+			for i < len(runes) && !(runes[i] >= 'A' && runes[i] <= 'Z') && !(runes[i] >= 'a' && runes[i] <= 'z') {
+				i++
+			}
+			i++
+			continue
+		}
+		out = append(out, runes[i])
+		i++
+	}
+	return out
+}
+
+// ansiPrefix extracts the leading ANSI escape sequence(s) from s.
+func ansiPrefix(s string) string {
+	runes := []rune(s)
+	var prefix []rune
+	i := 0
+	for i < len(runes) && runes[i] == '\x1b' {
+		prefix = append(prefix, runes[i])
+		i++
+		for i < len(runes) && !(runes[i] >= 'A' && runes[i] <= 'Z') && !(runes[i] >= 'a' && runes[i] <= 'z') {
+			prefix = append(prefix, runes[i])
+			i++
+		}
+		if i < len(runes) {
+			prefix = append(prefix, runes[i])
+			i++
+		}
+	}
+	return string(prefix)
+}
+
+// RenderInLineBlock is a convenience function that renders a Powerline-styled
+// header InLineBlock (blue background, white foreground, bold, centered) with
+// / border glyphs. This is used for viewport and sidebar headers, matching
+// the go-chat TUI spec.
+func RenderInLineBlock(text string, totalWidth int) string {
+	inner := totalWidth - 2
+	if inner < 2 {
+		inner = 2
+	}
+	runes := []rune(text)
+	if len(runes) > inner {
+		text = string(runes[:inner-1]) + "…"
+	}
+	content := headerStyle.Width(inner).Render(text)
+	borderStyle := lipgloss.NewStyle().Foreground(blue)
+	return borderStyle.Render("\ue0b6") + content + borderStyle.Render("\ue0b4")
+}
+
+// RenderInLineBlockStyled renders a Powerline-styled InLineBlock with a custom
+// base style and border color. Used for sidebar items where the focused session
+// gets the Powerline treatment.
+func RenderInLineBlockStyled(base lipgloss.Style, text string, maxWidth int, borderFg lipgloss.Color) string {
+	visible := visibleRunes(text)
+	if len(visible) > maxWidth-2 {
+		keep := maxWidth - 5
+		if keep < 1 {
+			text = "…"
+		} else {
+			prefix := ansiPrefix(text)
+			trimmed := prefix + string(visible[:keep]) + "…"
+			text = trimmed
+		}
+	}
+	styled := base.Copy().
+		Padding(0, 0).
+		MaxWidth(maxWidth - 2).
+		Render(text)
+	borderStyle := lipgloss.NewStyle().Foreground(borderFg)
+	return borderStyle.Render("\ue0b6") + styled + borderStyle.Render("\ue0b4")
 }
